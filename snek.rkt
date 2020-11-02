@@ -15,7 +15,7 @@
 (define SQUARE-SIZE 20)
 (define SQUARES-PER-SIDE 21)
 (define MTS (square (* SQUARE-SIZE SQUARES-PER-SIDE) "solid" "black"))
-(define PIECE (square SQUARE-SIZE "solid" "white"))
+(define TILE (square SQUARE-SIZE "solid" "white"))
 
 ;; =================
 ;; Data definitions:
@@ -36,31 +36,32 @@
         [(string=? "L" d) ...]
         [else ...]))
 
-(@htdd Piece)
-(define-struct piece (x y))
-;; Piece is (make-piece Natural Natural)
-;; interp. The x y position of a piece on the scene
-;; CONSTRAINT: piece-x and piece-y are in (0,SQUARES-PER-SIDE)
+(@htdd Tile)
+(define-struct tile (x y))
+;; tile is (make-tile Natural Natural)
+;; interp. The x y position of a tile
+;; CONSTRAINT: tile-x and tile-y are in (0,SQUARES-PER-SIDE)
 
-(define S1 (make-piece 11 11))
-(define S2 (make-piece 12 11))
-(define F1 (make-piece 16 11))
+(define S1 (make-tile 11 11))
+(define S2 (make-tile 12 11))
+(define F1 (make-tile 16 11))
 
-(define (fn-for-piece p)
-  (make-piece (piece-x p)
-              (piece-y p)))
+(define (fn-for-tile p)
+  (make-tile (tile-x p)
+             (tile-y p)))
 
 (define (fn-for-lop lop)
-  (cons (fn-for-piece (first lop))
+  (cons (fn-for-tile (first lop))
         (fn-for-lop (rest lop))))
 
 (@htdd Snek)
 (define-struct snek (lop dir))
-;; Snek is (make-snek (listof Piece) Dir)
-;; interp. The Snek made of a list of pieces and a direction it's heading in
+;; Snek is (make-snek (listof tile) Dir)
+;; interp. The Snek made of a list of tiles and a direction it's heading in
 
 (define SNEK1 (make-snek (list S1) D1))
 (define SNEK2 (make-snek (list S2) D1))
+(define SNEK3 (make-snek (list S1 S2) D1))
 
 (define (fn-for-snek s)
   (make-snek (fn-for-lop (snek-lop s))
@@ -70,14 +71,15 @@
 
 (@htdd Game)
 (define-struct game (snek food))
-;; Game is (make-game Snek Piece)
-;; interp. The status of the current game with the snek and a piece of food
+;; Game is (make-game Snek tile)
+;; interp. The status of the current game with the snek and a tile of food
 
 (define G1 (make-game SNEK1 F1))
+(define G2 (make-game SNEK3 F1))
 
 (define (fn-for-game g)
   (make-game (fn-for-snek (game-snek g))
-             (fn-for-piece (game-food g))))
+             (fn-for-tile (game-food g))))
 
 
 ;; =================
@@ -106,149 +108,128 @@
 
 (@template Game)
 (define (next-game g)
-  (local [(define ns (next-snek (game-snek g)))]
-    (make-game ns (next-food (game-food g) ns))))
+  (local [(define eat-food? 
+            (equal? (first (snek-lop (game-snek g))) (game-food g)))]
+  (make-game (next-snek (game-snek g) eat-food?)
+             (if eat-food?
+                 (next-food (game-food g))
+                 (game-food g)))))
                   
 
 (@htdf next-snek)
-(@signature Snek -> Snek)
-;; Produce the next listof piece by moving each of them one square
-(check-expect (next-snek SNEK1) SNEK2)
+(@signature Snek Boolean -> Snek)
+;; Produce the next Snek by moving each of its tiles
+(check-expect (next-snek SNEK1 false) SNEK2)
 
-(define (next-snek s)
-  (local [(define (next-lop-body lop-body lp)
-            (cond [(empty? lop-body) empty]
-                  [else
-                   (cons (make-piece (piece-x lp) (piece-y lp))
-                         (next-lop-body (rest lop-body)
-                                        (first lop-body)))]))]
-    (make-snek (cond [(empty? (snek-lop s)) (snek-lop s)]
-                     [else (cons (next-head (first (snek-lop s)) (snek-dir s))
-                                 (next-lop-body (rest (snek-lop s))
-                                                (first (snek-lop s))))])
-               (snek-dir s))))
-          
+(define (next-snek s ef)
+  (make-snek (cond [(empty? (snek-lop s)) (snek-lop s)]
+                   [else (cons (next-head (first (snek-lop s)) (snek-dir s))
+                               (if ef
+                                   (snek-lop s)
+                                   (next-body (rest (snek-lop s))
+                                          (first (snek-lop s)))))])
+             (snek-dir s)))
 
 (@htdf next-head)
-(@signature Piece Dir -> Piece)
-;; produce the head of the Snek by moving it in the current direction
-(check-expect (next-head S1 "R") (make-piece 12 11))
-(check-expect (next-head (make-piece 12 11) "L") (make-piece 11 11))
-(check-expect (next-head (make-piece 11 11) "U") (make-piece 11 10))
-(check-expect (next-head (make-piece 11 10) "D") (make-piece 11 11))
-(check-expect (next-head (make-piece 1 11) "L") (make-piece 1 11))
-(check-expect (next-head (make-piece 2 11) "L") (make-piece 1 11))
-(check-expect (next-head (make-piece SQUARES-PER-SIDE 11) "R")
-              (make-piece SQUARES-PER-SIDE 11))
-(check-expect (next-head (make-piece (- SQUARES-PER-SIDE 1) 11) "R")
-              (make-piece SQUARES-PER-SIDE 11))
-(check-expect (next-head (make-piece 11 1) "U") (make-piece 11 1))
-(check-expect (next-head (make-piece 11 2) "U") (make-piece 11 1))
-(check-expect (next-head (make-piece 11 SQUARES-PER-SIDE) "D")
-              (make-piece 11 SQUARES-PER-SIDE))
-(check-expect (next-head (make-piece 11 (- SQUARES-PER-SIDE 1)) "D")
-              (make-piece 11 SQUARES-PER-SIDE))
+(@signature Tile Dir -> Tile)
+;; produce the next head of the Snek by moving it in the current direction
+(check-expect (next-head S1 "R") (make-tile 12 11))
+(check-expect (next-head (make-tile 12 11) "L") (make-tile 11 11))
+(check-expect (next-head (make-tile 11 11) "U") (make-tile 11 10))
+(check-expect (next-head (make-tile 11 10) "D") (make-tile 11 11))
+(check-expect (next-head (make-tile 1 11) "L") (make-tile 1 11))
+(check-expect (next-head (make-tile 2 11) "L") (make-tile 1 11))
+(check-expect (next-head (make-tile SQUARES-PER-SIDE 11) "R")
+              (make-tile SQUARES-PER-SIDE 11))
+(check-expect (next-head (make-tile (- SQUARES-PER-SIDE 1) 11) "R")
+              (make-tile SQUARES-PER-SIDE 11))
+(check-expect (next-head (make-tile 11 1) "U") (make-tile 11 1))
+(check-expect (next-head (make-tile 11 2) "U") (make-tile 11 1))
+(check-expect (next-head (make-tile 11 SQUARES-PER-SIDE) "D")
+              (make-tile 11 SQUARES-PER-SIDE))
+(check-expect (next-head (make-tile 11 (- SQUARES-PER-SIDE 1)) "D")
+              (make-tile 11 SQUARES-PER-SIDE))
     
 (define (next-head p d)
   (local [(define (move-left p)
-            (if (<= (piece-x p) 1)
-                (make-piece 1 (piece-y p))
-                (make-piece (- (piece-x p) 1) (piece-y p))))
+            (if (<= (tile-x p) 1)
+                (make-tile 1 (tile-y p))
+                (make-tile (- (tile-x p) 1) (tile-y p))))
 
           (define (move-right p)
-            (if (>= (piece-x p) SQUARES-PER-SIDE)
-                (make-piece SQUARES-PER-SIDE (piece-y p))
-                (make-piece (+ (piece-x p) 1) (piece-y p))))
+            (if (>= (tile-x p) SQUARES-PER-SIDE)
+                (make-tile SQUARES-PER-SIDE (tile-y p))
+                (make-tile (+ (tile-x p) 1) (tile-y p))))
 
           (define (move-up p)
-            (if (<= (piece-y p) 1)
-                (make-piece (piece-x p) 1)
-                (make-piece (piece-x p) (- (piece-y p) 1))))
+            (if (<= (tile-y p) 1)
+                (make-tile (tile-x p) 1)
+                (make-tile (tile-x p) (- (tile-y p) 1))))
 
           (define (move-down p)
-            (if (>= (piece-y p) SQUARES-PER-SIDE)
-                (make-piece (piece-x p) SQUARES-PER-SIDE)
-                (make-piece (piece-x p) (+ (piece-y p) 1))))]
+            (if (>= (tile-y p) SQUARES-PER-SIDE)
+                (make-tile (tile-x p) SQUARES-PER-SIDE)
+                (make-tile (tile-x p) (+ (tile-y p) 1))))]
     (cond [(string=? "U" d) (move-up p)]
           [(string=? "D" d) (move-down p)]
           [(string=? "L" d) (move-left p)]
-          [else (move-right p)])))
+          [else (move-right p)]))) 
+
+
+(@htdf next-body)
+(@signature (listof Tile) Tile -> (listof Tile))
+;; Produce next body of snake by moving each tile to follow the next one
+(check-expect (next-body empty S1) empty)
+(check-expect (next-body (list S2) S1) (list S1)) 
+
+(define (next-body lop lp)
+  (cond [(empty? lop) empty]
+        [else
+         (cons lp
+               (next-body (rest lop)
+                          (first lop)))]))
 
 (@htdf next-food)
-(@signature Piece Snek -> Piece)
+(@signature Tile -> Tile)
 ;; Produce the next food pos by moving it if it has been eaten by head of snek
-(check-expect (next-food F1 SNEK1) F1)
-(check-random (next-food F1 (make-snek (list (make-piece 16 11)) "R"))
-              (make-piece (random SQUARES-PER-SIDE) (random SQUARES-PER-SIDE)))
+(check-random (next-food F1)
+              (make-tile (+ (random (- SQUARES-PER-SIDE 1)) 1)
+                         (+ (random (- SQUARES-PER-SIDE 1)) 1)))
 
-(@template Piece) 
-(define (next-food f s)
-  (local [(define (eat? f s)
-            (and (= (piece-x f) (piece-x s)) (= (piece-y f) (piece-y s))))]
-    (if (eat? f (first (snek-lop s)))
-        (make-piece (random SQUARES-PER-SIDE) (random SQUARES-PER-SIDE))
-        f)))
+(@template Tile) 
+(define (next-food f)
+  (make-tile (+ (random (- SQUARES-PER-SIDE 1)) 1)
+             (+ (random (- SQUARES-PER-SIDE 1)) 1)))
 
 (@htdf render-game)
 (@signature Game -> Image)
-;; Render the game including the snek head and food
+;; Render the game including the snek head and food 
 (check-expect (render-game G1)
-              (place-image PIECE
+              (place-image TILE
                            (- (* 16 SQUARE-SIZE) (/ SQUARE-SIZE 2))
                            (- (* 11 SQUARE-SIZE) (/ SQUARE-SIZE 2))
-                           (place-image PIECE
+                           (place-image TILE
                                         (- (* 11 SQUARE-SIZE) (/ SQUARE-SIZE 2))
                                         (- (* 11 SQUARE-SIZE) (/ SQUARE-SIZE 2))
                                         MTS)))
 
-(@template fn-composition)
+(@template Game)
 (define (render-game g)
-  (render-piece (game-food g)
-                (render-piece (first (snek-lop (game-snek g)))
-                              MTS))) 
+  (render-lot (cons (game-food g) (snek-lop (game-snek g)))))
 
-(@htdf render-piece)
-(@signature Piece Image -> Image)
-;; render the head of the snek on to the scene
-(check-expect (render-piece (make-piece 1 1) MTS) 
-              (place-image PIECE
-                           (/ SQUARE-SIZE 2)
-                           (/ SQUARE-SIZE 2)
-                           MTS))
-(check-expect (render-piece (make-piece 1 11) MTS)
-              (place-image PIECE
-                           (/ SQUARE-SIZE 2)
-                           (- (* 11 SQUARE-SIZE) (/ SQUARE-SIZE 2))
-                           MTS))
-(check-expect (render-piece (make-piece 11 1) MTS)
-              (place-image PIECE
-                           (- (* 11 SQUARE-SIZE) (/ SQUARE-SIZE 2))
-                           (/ SQUARE-SIZE 2)
-                           MTS))
-(check-expect (render-piece (make-piece 11 11) MTS)
-              (place-image PIECE
-                           (- (* 11 SQUARE-SIZE) (/ SQUARE-SIZE 2))
-                           (- (* 11 SQUARE-SIZE) (/ SQUARE-SIZE 2))
-                           MTS))
-(check-expect (render-piece (make-piece SQUARES-PER-SIDE SQUARES-PER-SIDE)
-                            MTS)
-              (place-image PIECE
-                           (- (* SQUARES-PER-SIDE SQUARE-SIZE)
-                              (/ SQUARE-SIZE 2))
-                           (- (* SQUARES-PER-SIDE SQUARE-SIZE)
-                              (/ SQUARE-SIZE 2))
-                           MTS))
+(@htdf render-lot)
+(@signature (listof Tile) -> Image)
+;; Render a list of tiles onto the scene
 
-
-(define (render-piece p i)
-  (place-image PIECE
-               (piece-pos (piece-x p))
-               (piece-pos (piece-y p))
-               i))
-
-(define (piece-pos n)
-  (- (* n SQUARE-SIZE) (/ SQUARE-SIZE 2)))
-
+(define (render-lot lot)
+  (cond [(empty? lot) MTS]
+        [else
+         (local [(define (tile-pos n)
+                   (- (* n SQUARE-SIZE) (/ SQUARE-SIZE 2)))]
+           (place-image TILE
+                        (tile-pos (tile-x (first lot)))
+                        (tile-pos (tile-y (first lot)))
+                        (render-lot (rest lot))))]))
 
 (@htdf handle-key)
 (@signature Game KeyEvent -> Game)
